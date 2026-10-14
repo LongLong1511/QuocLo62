@@ -1,0 +1,971 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="theme-color" content="#0f766e">
+    <meta name="description" content="Bản đồ ảnh hưởng mở rộng Quốc lộ 62 đến các thửa đất lân cận, xã Thạnh Hóa, tỉnh Tây Ninh">
+    <title>Ảnh hưởng mở rộng QL62 - Xã Thạnh Hóa</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://unpkg.com/@turf/turf@6.5.0/turf.min.js"></script>
+    <style>
+        :root {
+            --brand: #0f766e;
+            --brand-dark: #134e4a;
+            --ink: #1f2937;
+            --muted: #6b7280;
+            --line: #e5e7eb;
+            --bg: #f8fafc;
+            --road: #facc15;
+            --corridor: #ef4444;
+            --full: #dc2626;
+            --partial: #f97316;
+            --none: #22c55e;
+            --sidebar-w: 360px;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+        html, body {
+            width: 100%;
+            height: 100%;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            color: var(--ink);
+            overflow: hidden;
+            background: #111;
+        }
+
+        .app { display: flex; height: 100vh; height: 100dvh; }
+
+        /* ---------- Sidebar ---------- */
+        .sidebar {
+            width: var(--sidebar-w);
+            flex-shrink: 0;
+            background: #fff;
+            display: flex;
+            flex-direction: column;
+            box-shadow: 2px 0 16px rgba(0,0,0,.18);
+            z-index: 1000;
+            transition: transform .3s ease;
+        }
+
+        .sidebar-header {
+            background: linear-gradient(135deg, var(--brand-dark), var(--brand));
+            color: #fff;
+            padding: 18px 20px 16px;
+        }
+
+        .sidebar-header .eyebrow {
+            font-size: 11px;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            opacity: .85;
+            margin-bottom: 4px;
+        }
+
+        .sidebar-header h1 { font-size: 19px; line-height: 1.25; font-weight: 700; }
+        .sidebar-header .place { font-size: 13px; margin-top: 4px; opacity: .95; }
+
+        .sidebar-header .credit {
+            margin-top: 12px;
+            padding-top: 10px;
+            border-top: 1px solid rgba(255,255,255,.25);
+            font-size: 11.5px;
+            opacity: .9;
+        }
+
+        .sidebar-header .credit strong { display: block; font-size: 12.5px; opacity: 1; }
+
+        .sidebar-body { flex: 1; overflow-y: auto; padding: 16px 18px 24px; }
+
+        .section { margin-bottom: 20px; }
+
+        .section-title {
+            font-size: 11.5px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: .8px;
+            color: var(--brand);
+            margin-bottom: 10px;
+        }
+
+        /* Stats */
+        .stats { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+
+        .stat {
+            background: var(--bg);
+            border: 1px solid var(--line);
+            border-radius: 8px;
+            padding: 10px 12px;
+        }
+
+        .stat .value { font-size: 18px; font-weight: 700; font-variant-numeric: tabular-nums; }
+        .stat .label { font-size: 11px; color: var(--muted); margin-top: 2px; }
+        .stat.full .value { color: var(--full); }
+        .stat.partial .value { color: var(--partial); }
+        .stat.wide { grid-column: span 2; }
+
+        /* Search + list */
+        .search {
+            width: 100%;
+            padding: 9px 12px;
+            border: 1px solid var(--line);
+            border-radius: 8px;
+            font: inherit;
+            font-size: 13px;
+            margin-bottom: 8px;
+        }
+
+        .search:focus { outline: 2px solid var(--brand); outline-offset: -1px; }
+
+        .filter-row { display: flex; gap: 6px; margin-bottom: 8px; flex-wrap: wrap; }
+
+        .chip {
+            border: 1px solid var(--line);
+            background: #fff;
+            border-radius: 999px;
+            padding: 5px 10px;
+            font: inherit;
+            font-size: 11.5px;
+            cursor: pointer;
+        }
+
+        .chip.active { background: var(--ink); color: #fff; border-color: var(--ink); }
+
+        .parcel-list {
+            border: 1px solid var(--line);
+            border-radius: 8px;
+            max-height: 320px;
+            overflow-y: auto;
+        }
+
+        .parcel-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 9px 12px;
+            border-bottom: 1px solid var(--line);
+            cursor: pointer;
+            font-size: 12.5px;
+        }
+
+        .parcel-item:last-child { border-bottom: none; }
+        .parcel-item:hover { background: #f0fdfa; }
+
+        .dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+        .parcel-item .main { flex: 1; min-width: 0; }
+        .parcel-item .title { font-weight: 600; }
+        .parcel-item .sub { color: var(--muted); font-size: 11.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .parcel-item .area { font-variant-numeric: tabular-nums; font-weight: 600; text-align: right; white-space: nowrap; }
+
+        .empty { padding: 18px 12px; text-align: center; color: var(--muted); font-size: 12.5px; line-height: 1.5; }
+
+        /* Layers + legend */
+        .toggle {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 6px 0;
+            font-size: 13px;
+            cursor: pointer;
+        }
+
+        .toggle input { width: 16px; height: 16px; accent-color: var(--brand); cursor: pointer; }
+        .swatch { width: 18px; height: 12px; border-radius: 3px; flex-shrink: 0; }
+        .swatch.line { height: 4px; }
+
+        /* Buttons */
+        .btn-row { display: flex; gap: 8px; flex-wrap: wrap; }
+
+        .btn {
+            flex: 1;
+            min-width: 120px;
+            padding: 9px 12px;
+            border-radius: 8px;
+            border: 1px solid var(--brand);
+            background: var(--brand);
+            color: #fff;
+            font: inherit;
+            font-size: 12.5px;
+            font-weight: 600;
+            cursor: pointer;
+        }
+
+        .btn.ghost { background: #fff; color: var(--brand); }
+        .btn:disabled { opacity: .45; cursor: not-allowed; }
+
+        .file-slot {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+            padding: 8px 0;
+            border-bottom: 1px dashed var(--line);
+            font-size: 12.5px;
+        }
+
+        .file-slot:last-child { border-bottom: none; }
+        .file-slot .name { font-weight: 600; }
+        .file-slot .state { font-size: 11px; color: var(--muted); }
+        .file-slot .state.ok { color: #15803d; }
+        .file-slot label.pick {
+            border: 1px solid var(--line);
+            border-radius: 6px;
+            padding: 5px 10px;
+            font-size: 11.5px;
+            cursor: pointer;
+            white-space: nowrap;
+        }
+        .file-slot input[type=file] { display: none; }
+
+        .notice {
+            background: #fffbeb;
+            border: 1px solid #fde68a;
+            color: #92400e;
+            border-radius: 8px;
+            padding: 10px 12px;
+            font-size: 12px;
+            line-height: 1.5;
+            margin-bottom: 12px;
+        }
+
+        .notice.error { background: #fef2f2; border-color: #fecaca; color: #991b1b; }
+        .hidden { display: none !important; }
+
+        /* ---------- Map ---------- */
+        .map-wrap { flex: 1; position: relative; }
+        #map { width: 100%; height: 100%; }
+
+        .map-badge {
+            position: absolute;
+            z-index: 900;
+            background: rgba(255,255,255,.95);
+            border-radius: 6px;
+            box-shadow: 0 2px 8px rgba(0,0,0,.2);
+            padding: 6px 10px;
+            font-size: 11.5px;
+        }
+
+        .coords { left: 12px; bottom: 22px; font-family: ui-monospace, Consolas, monospace; }
+
+        .basemap-switch {
+            position: absolute;
+            top: 12px;
+            right: 12px;
+            z-index: 900;
+            display: flex;
+            background: #fff;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,.25);
+            overflow: hidden;
+        }
+
+        .basemap-switch button {
+            border: none;
+            background: #fff;
+            padding: 8px 12px;
+            font: inherit;
+            font-size: 12px;
+            font-weight: 600;
+            cursor: pointer;
+        }
+
+        .basemap-switch button.active { background: var(--brand); color: #fff; }
+
+        .menu-btn {
+            display: none;
+            position: absolute;
+            top: 12px;
+            left: 12px;
+            z-index: 1001;
+            width: 44px;
+            height: 44px;
+            border-radius: 50%;
+            border: none;
+            background: var(--brand);
+            color: #fff;
+            font-size: 20px;
+            box-shadow: 0 3px 10px rgba(0,0,0,.3);
+            cursor: pointer;
+        }
+
+        .leaflet-container a.leaflet-popup-close-button { font-size: 20px; }
+
+        .popup h3 { font-size: 13px; color: var(--brand); margin-bottom: 6px; }
+        .popup table { border-collapse: collapse; width: 100%; font-size: 12px; }
+        .popup td { padding: 3px 4px; vertical-align: top; }
+        .popup td:first-child { color: var(--muted); white-space: nowrap; padding-right: 10px; }
+        .popup td:last-child { font-weight: 600; }
+        .popup-sub {
+            font-size: 10.5px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: .6px;
+            color: var(--muted);
+            margin: 10px 0 4px;
+            padding-bottom: 3px;
+            border-bottom: 1px solid var(--line);
+        }
+        .popup .tag {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 999px;
+            color: #fff;
+            font-size: 11px;
+            font-weight: 700;
+            margin-bottom: 6px;
+        }
+
+        .popup .bar { height: 6px; background: var(--line); border-radius: 3px; overflow: hidden; margin: 6px 0 2px; }
+        .popup .bar span { display: block; height: 100%; background: var(--full); }
+
+        @media (max-width: 768px) {
+            .sidebar {
+                position: fixed;
+                top: 0;
+                left: 0;
+                height: 100%;
+                width: min(92vw, var(--sidebar-w));
+                transform: translateX(-105%);
+            }
+
+            .sidebar.open { transform: translateX(0); }
+            .menu-btn { display: block; }
+            .basemap-switch button { padding: 8px 10px; }
+        }
+    </style>
+</head>
+<body>
+<div class="app">
+    <!-- ========== SIDEBAR ========== -->
+    <aside class="sidebar" id="sidebar">
+        <div class="sidebar-header">
+            <div class="eyebrow">Bản đồ ảnh hưởng dự án</div>
+            <h1>Mở rộng Quốc lộ 62</h1>
+            <div class="place">Xã Thạnh Hóa, tỉnh Tây Ninh</div>
+            <div class="credit">
+                Đơn vị thực hiện
+                <strong>Công ty TNHH Đo đạc nhà đất Hưng Phú</strong>
+            </div>
+        </div>
+
+        <div class="sidebar-body">
+            <div id="dataNotice" class="notice hidden"></div>
+
+            <!-- Thống kê -->
+            <div class="section">
+                <div class="section-title">Tổng hợp ảnh hưởng</div>
+                <div class="stats">
+                    <div class="stat"><div class="value" id="stAffected">0</div><div class="label">Thửa bị ảnh hưởng</div></div>
+                    <div class="stat"><div class="value" id="stTotal">0</div><div class="label">Thửa trong khu vực</div></div>
+                    <div class="stat full"><div class="value" id="stFull">0</div><div class="label">Thu hồi toàn bộ</div></div>
+                    <div class="stat partial"><div class="value" id="stPartial">0</div><div class="label">Thu hồi một phần</div></div>
+                    <div class="stat wide"><div class="value" id="stArea">0 m²</div><div class="label">Tổng diện tích thuộc quy hoạch</div></div>
+                </div>
+            </div>
+
+            <!-- Danh sách thửa -->
+            <div class="section">
+                <div class="section-title">Danh sách thửa đất</div>
+                <input id="searchBox" class="search" type="search" placeholder="Tìm số tờ, số thửa hoặc chủ sử dụng…">
+                <div class="filter-row" id="filterRow">
+                    <button class="chip active" data-filter="affected">Bị ảnh hưởng</button>
+                    <button class="chip" data-filter="full">Toàn bộ</button>
+                    <button class="chip" data-filter="partial">Một phần</button>
+                    <button class="chip" data-filter="all">Tất cả</button>
+                </div>
+                <div class="parcel-list" id="parcelList">
+                    <div class="empty">Chưa có dữ liệu thửa đất.</div>
+                </div>
+                <div class="btn-row" style="margin-top:10px">
+                    <button class="btn ghost" id="btnZoom" onclick="zoomToData()">Xem toàn tuyến</button>
+                    <button class="btn" id="btnCsv" onclick="exportCsv()" disabled>Xuất bảng CSV</button>
+                </div>
+            </div>
+
+            <!-- Lớp bản đồ -->
+            <div class="section">
+                <div class="section-title">Lớp bản đồ</div>
+                <label class="toggle"><input type="checkbox" data-layer="timduong" checked><span class="swatch line" style="background:var(--road)"></span>Tim đường QL62 hiện hữu</label>
+                <label class="toggle"><input type="checkbox" data-layer="hanhlang" checked><span class="swatch" style="background:rgba(239,68,68,.25);border:2px dashed var(--corridor)"></span>Phạm vi mở rộng (chỉ giới)</label>
+                <label class="toggle"><input type="checkbox" data-layer="thuhoi" checked><span class="swatch" style="background:var(--full)"></span>Phần thuộc quy hoạch (thu hồi)</label>
+                <label class="toggle"><input type="checkbox" data-layer="thuadat" checked><span class="swatch" style="background:#fff;border:2px solid var(--partial)"></span>Ranh thửa đất</label>
+                <label class="toggle"><input type="checkbox" id="chkHideNone"><span class="swatch" style="background:#fff;border:2px solid var(--none)"></span>Ẩn thửa không bị ảnh hưởng</label>
+                <label class="toggle"><input type="checkbox" id="chkLandColor" checked><span class="swatch" style="background:linear-gradient(90deg,#FFDBFE 33%,#FFDBB1 33% 66%,#FFF3C3 66%)"></span>Tô màu theo loại đất</label>
+            </div>
+
+            <!-- Chú giải -->
+            <div class="section">
+                <div class="section-title">Chú giải mức ảnh hưởng (viền thửa)</div>
+                <div class="toggle" style="cursor:default"><span class="swatch" style="background:var(--full)"></span>Thu hồi toàn bộ thửa</div>
+                <div class="toggle" style="cursor:default"><span class="swatch" style="background:var(--partial)"></span>Thu hồi một phần thửa</div>
+                <div class="toggle" style="cursor:default"><span class="swatch" style="background:var(--none)"></span>Không bị ảnh hưởng</div>
+            </div>
+
+            <!-- Chú giải loại đất -->
+            <div class="section">
+                <div class="section-title">Chú giải loại đất (nền thửa)</div>
+                <div id="landLegend"><div class="empty" style="padding:6px 0;text-align:left">Chưa có dữ liệu thửa đất.</div></div>
+            </div>
+
+            <!-- Nạp dữ liệu -->
+            <div class="section">
+                <div class="section-title">Nạp dữ liệu (GeoJSON, WGS84)</div>
+                <div class="file-slot">
+                    <div><div class="name">Tim đường QL62</div><div class="state" id="state-timduong">Chưa có</div></div>
+                    <label class="pick">Chọn file<input type="file" accept=".json,.geojson" data-slot="timduong"></label>
+                </div>
+                <div class="file-slot">
+                    <div><div class="name">Phạm vi mở rộng</div><div class="state" id="state-hanhlang">Chưa có</div></div>
+                    <label class="pick">Chọn file<input type="file" accept=".json,.geojson" data-slot="hanhlang"></label>
+                </div>
+                <div class="file-slot">
+                    <div><div class="name">Thửa đất</div><div class="state" id="state-thuadat">Chưa có</div></div>
+                    <label class="pick">Chọn file<input type="file" accept=".json,.geojson" data-slot="thuadat"></label>
+                </div>
+                <div class="file-slot">
+                    <div><div class="name">Thửa cắt theo quy hoạch</div><div class="state" id="state-phancat">Chưa có</div></div>
+                    <label class="pick">Chọn file<input type="file" accept=".json,.geojson" data-slot="phancat"></label>
+                </div>
+            </div>
+        </div>
+    </aside>
+
+    <!-- ========== MAP ========== -->
+    <main class="map-wrap">
+        <div id="map"></div>
+        <button class="menu-btn" onclick="toggleSidebar()" title="Mở bảng điều khiển">☰</button>
+        <div class="basemap-switch" id="basemapSwitch">
+            <button data-base="satellite" class="active">Vệ tinh</button>
+            <button data-base="hybrid">Vệ tinh + nhãn</button>
+            <button data-base="osm">Bản đồ</button>
+        </div>
+        <div class="map-badge coords" id="coords">Di chuột để xem tọa độ</div>
+    </main>
+</div>
+
+<script>
+    // ================== CẤU HÌNH ==================
+    // Vị trí mặc định: khu vực xã Thạnh Hóa, tỉnh Tây Ninh (dọc QL62)
+    const MAP_CENTER = [10.620, 106.283];
+    const MAP_ZOOM = 14;
+
+    // Đặt file GeoJSON (hệ WGS84 / EPSG:4326) vào thư mục data/ với đúng tên dưới đây.
+    // Nếu mở index.html trực tiếp (file://) thì dùng mục "Nạp dữ liệu" trong thanh bên.
+    const DATA_FILES = {
+        timduong: 'data/QL62_timduong.geojson',   // đường (LineString) tim đường hiện hữu
+        hanhlang: 'data/QL62_phamvi_morong.geojson', // vùng (Polygon) phạm vi/chỉ giới mở rộng
+        thuadat:  'data/Thuadat.geojson',          // vùng (Polygon) ranh thửa đất trước khi cắt
+        phancat:  'data/Thuadat_ThuocQL62.geojson' // thửa đã cắt theo quy hoạch QL62 (trường QH, DTThuocQH)
+    };
+
+    // Liên kết file đã cắt với thửa gốc: trường trỏ về FID của thửa trước khi cắt
+    const PHANCAT_LINK = { parentField: 'FID', childField: 'FID_Manh1', qhField: 'QH', areaField: 'DTThuocQH' };
+
+    // Ngưỡng coi là thu hồi toàn bộ: phần còn lại < 1 m² hoặc bị ảnh hưởng >= 99% diện tích
+    const FULL_RATIO = 0.99;
+    const FULL_REMAIN_M2 = 1;
+
+    // Tên trường thuộc tính chấp nhận được (lấy trường đầu tiên có giá trị)
+    const FIELDS = {
+        soTo:     ['So_To', 'SoTo', 'SOTO', 'SHBANDO', 'To', 'SoHieuToBanDo'],
+        soThua:   ['Sothua', 'SoThua', 'SOTHUA', 'SHTHUA', 'Thua', 'SoHieuThua'],
+        chu:      ['Chusudung', 'ChuSuDung', 'ChuSD', 'Chu_SD', 'TenChu', 'TENCHU', 'Nguoisudun', 'HoTen'],
+        loaiDat:  ['Loaidat', 'LoaiDat', 'LoaidatHT', 'KHLOAIDAT', 'KH2003', 'MDSD', 'MucDichSD'],
+        dienTich: ['Dientich', 'DienTich', 'DIENTICH', 'DTSD', 'DT'],
+        dtAH:     ['DTanhhuong', 'DT_AH', 'DTAnhHuong', 'DT_thuhoi', 'DTThuhoi', 'DTTH'],
+        diaChi:   ['Diachi', 'DiaChi', 'DIACHI', 'Ap', 'Khupho', 'Khuphomoi']
+    };
+
+    // Nhãn tiếng Việt cho các trường trong file thửa đất (trường khác hiện đúng tên gốc)
+    const FIELD_LABELS = {
+        SHBANDO: 'Số tờ bản đồ', SHTHUA: 'Số thửa', DTSD: 'Diện tích sử dụng',
+        KH2003: 'Loại đất (KH 2003)', TENCHU: 'Tên chủ sử dụng', DIACHI: 'Địa chỉ',
+        FID: 'FID', FID_: 'FID_', OBJECTID_1: 'OBJECTID',
+        QH: 'Quy hoạch', DTThuocQH: 'DT thuộc quy hoạch (m²)', FID_Manh1: 'FID thửa gốc',
+        FID_QL62_Wgs84: 'FID ranh QL62', Shape_Area: 'Diện tích mảnh (m²)', Shape_Length: 'Chu vi mảnh (m)'
+    };
+
+    // Màu loại đất lấy từ file Thua_CanGio.lyr (trường Loai_dat, kiểu Unique Values)
+    const LAND_COLORS = {
+        BCS: '#FFFFFE', CAN: '#FF6A59', CLN: '#FFDBB1', CQP: '#FF7D64',
+        DBV: '#FFBAB0', DCH: '#FFBAB0', DGD: '#FFBAB0', DKV: '#FFBAB0', DNL: '#FFBAB0',
+        DSK: '#FFBAB0', DTT: '#FFBAB0', DVH: '#FFBAB0', DXH: '#FFBAB0', DYT: '#FFBAB0',
+        HNK: '#FFF3C3', LMU: '#7D90A3', MNC: '#BCFEFF', NKH: '#F6FEC3', NTD: '#DBDBDB',
+        NTS: '#B2FEFF', ODT: '#FFB4FD', ONT: '#FFDBFE', RPH: '#BAFC40',
+        SKC: '#FFBAB0', TIN: '#FFBAB0', TMD: '#FFBAB0', TON: '#FFBAB0', TSC: '#FFBAB0',
+        // Bổ sung ngoài file .lyr
+        BHK: '#FFF3C3', // dùng màu của HNK
+        COC: '#F8F8F4'  // trắng nhạt
+    };
+    const LAND_DEFAULT = '#D8E4FC'; // "<all other values>" trong file .lyr
+
+    // Loại đất ghép (vd "ONT+CLN") lấy màu theo mã đầu tiên
+    function landCode(v) { return String(v || '').trim().split(/[+,;\s]/)[0].toUpperCase(); }
+    function landColor(v) { return LAND_COLORS[landCode(v)] || LAND_DEFAULT; }
+
+    const COLORS = { full: '#dc2626', partial: '#f97316', none: '#22c55e', road: '#facc15', corridor: '#ef4444' };
+    const STATUS_LABEL = { full: 'Thu hồi toàn bộ', partial: 'Thu hồi một phần', none: 'Không ảnh hưởng' };
+
+    const BASEMAPS = {
+        satellite: [
+            ['https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', '© Esri']
+        ],
+        hybrid: [
+            ['https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', '© Esri'],
+            ['https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}', ''],
+            ['https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Transportation/MapServer/tile/{z}/{y}/{x}', '']
+        ],
+        osm: [
+            ['https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', '© OpenStreetMap']
+        ]
+    };
+
+    // ================== TRẠNG THÁI ==================
+    let map, baseGroup;
+    const raw = { timduong: null, hanhlang: null, thuadat: null, phancat: null };
+    const layers = {};
+    let parcels = [];          // [{ id, feature, props, area, affected, remain, ratio, status, cut, layer }]
+    let listFilter = 'affected';
+    let searchText = '';
+
+    // ================== KHỞI TẠO ==================
+    window.addEventListener('load', async () => {
+        map = L.map('map', { zoomControl: false }).setView(MAP_CENTER, MAP_ZOOM);
+        L.control.zoom({ position: 'bottomright' }).addTo(map);
+        L.control.scale({ imperial: false, position: 'bottomright' }).addTo(map);
+        baseGroup = L.layerGroup().addTo(map);
+        setBasemap('satellite');
+
+        map.on('mousemove', e => {
+            document.getElementById('coords').textContent = `${e.latlng.lat.toFixed(6)}, ${e.latlng.lng.toFixed(6)}`;
+        });
+
+        bindUi();
+        await loadDefaultFiles();
+        rebuild();
+
+        const id = new URLSearchParams(location.search).get('thua');
+        if (id) focusParcel(id);
+        else zoomToData();
+    });
+
+    function bindUi() {
+        document.querySelectorAll('#basemapSwitch button').forEach(b =>
+            b.addEventListener('click', () => setBasemap(b.dataset.base)));
+
+        document.querySelectorAll('input[data-layer]').forEach(chk =>
+            chk.addEventListener('change', () => setLayerVisible(chk.dataset.layer, chk.checked)));
+
+        document.getElementById('chkHideNone').addEventListener('change', () => styleParcels());
+        document.getElementById('chkLandColor').addEventListener('change', () => styleParcels());
+
+        document.querySelectorAll('#filterRow .chip').forEach(c => c.addEventListener('click', () => {
+            document.querySelectorAll('#filterRow .chip').forEach(x => x.classList.remove('active'));
+            c.classList.add('active');
+            listFilter = c.dataset.filter;
+            renderList();
+        }));
+
+        document.getElementById('searchBox').addEventListener('input', e => {
+            searchText = e.target.value.trim().toLowerCase();
+            renderList();
+        });
+
+        document.querySelectorAll('input[type=file][data-slot]').forEach(inp =>
+            inp.addEventListener('change', () => readLocalFile(inp)));
+
+        map.on('click', () => { if (window.innerWidth <= 768) closeSidebar(); });
+    }
+
+    function setBasemap(key) {
+        baseGroup.clearLayers();
+        BASEMAPS[key].forEach(([url, attribution]) =>
+            L.tileLayer(url, { attribution, maxZoom: 20, maxNativeZoom: key === 'osm' ? 19 : 18 }).addTo(baseGroup));
+        document.querySelectorAll('#basemapSwitch button').forEach(b =>
+            b.classList.toggle('active', b.dataset.base === key));
+    }
+
+    // ================== NẠP DỮ LIỆU ==================
+    async function loadDefaultFiles() {
+        const missing = [];
+        for (const [slot, path] of Object.entries(DATA_FILES)) {
+            try {
+                const res = await fetch(path, { cache: 'no-cache' });
+                if (!res.ok) throw new Error(res.status);
+                raw[slot] = await res.json();
+                setSlotState(slot, path.split('/').pop());
+            } catch (err) {
+                missing.push(path);
+            }
+        }
+        if (missing.length === Object.keys(DATA_FILES).length) {
+            showNotice('Chưa có dữ liệu. Đặt các file GeoJSON vào thư mục <b>data/</b> (xem README) hoặc dùng mục <b>Nạp dữ liệu</b> ở cuối thanh bên.');
+        } else if (missing.length) {
+            showNotice('Thiếu file: ' + missing.map(m => `<b>${m}</b>`).join(', '));
+        }
+    }
+
+    function readLocalFile(input) {
+        const file = input.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = () => {
+            try {
+                raw[input.dataset.slot] = JSON.parse(reader.result);
+                setSlotState(input.dataset.slot, file.name);
+                hideNotice();
+                rebuild();
+                zoomToData();
+            } catch (err) {
+                showNotice('Không đọc được file <b>' + escapeHtml(file.name) + '</b>: ' + escapeHtml(err.message), true);
+            }
+        };
+        reader.readAsText(file, 'utf-8');
+    }
+
+    function setSlotState(slot, name) {
+        const el = document.getElementById('state-' + slot);
+        const n = raw[slot]?.features?.length ?? 0;
+        el.textContent = `${name} · ${n} đối tượng`;
+        el.classList.add('ok');
+    }
+
+    // ================== TÍNH TOÁN & VẼ ==================
+    function rebuild() {
+        Object.values(layers).forEach(l => map.removeLayer(l));
+        checkCoordinates();
+
+        // Tim đường
+        if (raw.timduong) {
+            layers.timduong = L.geoJSON(raw.timduong, {
+                style: { color: COLORS.road, weight: 4, opacity: 1, dashArray: '10 6' }
+            });
+        }
+
+        // Phạm vi mở rộng
+        let corridor = null;
+        if (raw.hanhlang) {
+            layers.hanhlang = L.geoJSON(raw.hanhlang, {
+                style: { color: COLORS.corridor, weight: 2, dashArray: '6 4', fillColor: COLORS.corridor, fillOpacity: 0.12 }
+            });
+            corridor = dissolve(raw.hanhlang);
+        }
+
+        // Thửa đã cắt theo quy hoạch: gom các mảnh theo thửa gốc
+        const pieces = {};
+        if (raw.phancat) {
+            raw.phancat.features.forEach(f => {
+                const pr = f.properties || {};
+                const key = String(pr[PHANCAT_LINK.childField]);
+                (pieces[key] = pieces[key] || []).push(f);
+            });
+        }
+
+        // Thửa đất
+        parcels = [];
+        const cutFeatures = [];
+        if (raw.thuadat) {
+            raw.thuadat.features.forEach((f, i) => {
+                if (!f.geometry) return;
+                const key = String((f.properties || {})[PHANCAT_LINK.parentField]);
+                const p = analyseParcel(f, i, corridor, raw.phancat ? (pieces[key] || []) : null);
+                parcels.push(p);
+                if (p.cut) cutFeatures.push(...(p.cut.type === 'FeatureCollection' ? p.cut.features : [p.cut]));
+            });
+
+            const seen = {};
+            parcels.forEach(p => {
+                seen[p.id] = (seen[p.id] || 0) + 1;
+                if (seen[p.id] > 1) p.id = `${p.id}-${seen[p.id]}`;
+            });
+
+            layers.thuadat = L.geoJSON(raw.thuadat, {
+                filter: f => !!f.geometry,
+                onEachFeature: (f, layer) => {
+                    const p = parcels.find(x => x.feature === f);
+                    p.layer = layer;
+                    layer.bindPopup(() => popupHtml(p), { maxWidth: 340, maxHeight: 420 });
+                    layer.bindTooltip(`Tờ ${p.soTo} - Thửa ${p.soThua}${p.chu ? ' · ' + p.chu : ''}`, { sticky: true, direction: 'top' });
+                }
+            });
+
+            layers.thuhoi = L.geoJSON({ type: 'FeatureCollection', features: cutFeatures }, {
+                interactive: false,
+                style: { stroke: false, fillColor: COLORS.full, fillOpacity: 0.55 }
+            });
+        }
+
+        // Thứ tự vẽ: thửa đất -> phần thu hồi -> phạm vi -> tim đường
+        ['thuadat', 'thuhoi', 'hanhlang', 'timduong'].forEach(k => {
+            const chk = document.querySelector(`input[data-layer="${k}"]`);
+            if (layers[k] && (!chk || chk.checked)) layers[k].addTo(map);
+        });
+
+        styleParcels();
+        renderStats();
+        renderLandLegend();
+        renderList();
+        document.getElementById('btnCsv').disabled = !parcels.length;
+    }
+
+    function analyseParcel(f, i, corridor, myPieces) {
+        const props = f.properties || {};
+        const soTo = pick(props, FIELDS.soTo) ?? '';
+        const soThua = pick(props, FIELDS.soThua) ?? '';
+        const geomArea = safeArea(f);
+        let area = toNum(pick(props, FIELDS.dienTich)) || geomArea;
+
+        let cut = null;
+        let affected = toNum(pick(props, FIELDS.dtAH));
+        let qhPieces = [];
+        if (myPieces) {
+            // Ưu tiên số liệu từ file đã cắt theo quy hoạch (diện tích tính trên VN-2000)
+            const pieceArea = pc => toNum(pc.properties[PHANCAT_LINK.areaField]) ?? safeArea(pc);
+            const isQH = pc => String(pc.properties[PHANCAT_LINK.qhField] ?? '').trim() !== '';
+            qhPieces = myPieces.filter(isQH);
+            if (myPieces.length) area = myPieces.reduce((s, pc) => s + pieceArea(pc), 0);
+            affected = qhPieces.reduce((s, pc) => s + pieceArea(pc), 0);
+            if (qhPieces.length) cut = { type: 'FeatureCollection', features: qhPieces };
+        } else if (corridor) {
+            cut = safeIntersect(f, corridor);
+            if (affected == null) affected = cut ? turf.area(cut) : 0;
+        }
+        affected = Math.min(affected || 0, area || Infinity);
+        const remain = Math.max(area - affected, 0);
+        const ratio = area ? affected / area : 0;
+
+        let status = 'none';
+        if (affected > 0.05) status = (ratio >= FULL_RATIO || remain < FULL_REMAIN_M2) ? 'full' : 'partial';
+
+        return {
+            id: soTo !== '' && soThua !== '' ? `${soTo}-${soThua}` : `f${i}`,
+            feature: f, props, soTo, soThua,
+            chu: pick(props, FIELDS.chu) ?? '',
+            loaiDat: pick(props, FIELDS.loaiDat) ?? '',
+            diaChi: pick(props, FIELDS.diaChi) ?? '',
+            area, affected, remain, ratio, status, cut, qhPieces, layer: null
+        };
+    }
+
+    function styleParcels() {
+        const hideNone = document.getElementById('chkHideNone').checked;
+        parcels.forEach(p => {
+            if (!p.layer) return;
+            const c = COLORS[p.status];
+            const hidden = hideNone && p.status === 'none';
+            const byLand = document.getElementById('chkLandColor').checked;
+            p.layer.setStyle({
+                color: c,
+                weight: p.status === 'none' ? 1 : 2,
+                opacity: hidden ? 0 : 1,
+                fillColor: byLand ? landColor(p.loaiDat) : c,
+                fillOpacity: hidden ? 0 : (byLand ? 0.75 : (p.status === 'none' ? 0.05 : 0.15))
+            });
+        });
+    }
+
+    function renderLandLegend() {
+        const box = document.getElementById('landLegend');
+        const counts = {};
+        parcels.forEach(p => {
+            const code = landCode(p.loaiDat) || '(trống)';
+            counts[code] = (counts[code] || 0) + 1;
+        });
+        const codes = Object.keys(counts).sort((a, b) => counts[b] - counts[a]);
+        if (!codes.length) return;
+        box.innerHTML = codes.map(code => `
+            <div class="toggle" style="cursor:default">
+                <span class="swatch" style="background:${LAND_COLORS[code] || LAND_DEFAULT};border:1px solid #9ca3af"></span>
+                <span style="flex:1">${escapeHtml(code)}${LAND_COLORS[code] ? '' : ' <span style="color:var(--muted);font-size:11px">(không có trong .lyr)</span>'}</span>
+                <span style="color:var(--muted);font-size:12px">${counts[code]} thửa</span>
+            </div>`).join('');
+    }
+
+    function renderStats() {
+        const aff = parcels.filter(p => p.status !== 'none');
+        setText('stTotal', parcels.length);
+        setText('stAffected', aff.length);
+        setText('stFull', parcels.filter(p => p.status === 'full').length);
+        setText('stPartial', parcels.filter(p => p.status === 'partial').length);
+        setText('stArea', fmtArea(aff.reduce((s, p) => s + p.affected, 0)));
+    }
+
+    function renderList() {
+        const box = document.getElementById('parcelList');
+        if (!parcels.length) {
+            box.innerHTML = '<div class="empty">Chưa có dữ liệu thửa đất.</div>';
+            return;
+        }
+        const rows = parcels
+            .filter(p => listFilter === 'all' ? true : listFilter === 'affected' ? p.status !== 'none' : p.status === listFilter)
+            .filter(p => !searchText || `tờ ${p.soTo} thửa ${p.soThua} ${p.soTo}-${p.soThua} ${p.chu} ${p.diaChi}`.toLowerCase().includes(searchText))
+            .sort((a, b) => b.affected - a.affected);
+
+        if (!rows.length) {
+            box.innerHTML = '<div class="empty">Không có thửa phù hợp.</div>';
+            return;
+        }
+        box.innerHTML = rows.slice(0, 500).map(p => `
+            <div class="parcel-item" data-id="${escapeHtml(p.id)}">
+                <span class="dot" style="background:${COLORS[p.status]}"></span>
+                <div class="main">
+                    <div class="title">Tờ ${escapeHtml(p.soTo)} · Thửa ${escapeHtml(p.soThua)}</div>
+                    <div class="sub">${escapeHtml(p.chu || p.loaiDat || STATUS_LABEL[p.status])}</div>
+                </div>
+                <div class="area">${p.affected ? fmtArea(p.affected) : '—'}</div>
+            </div>`).join('');
+        box.querySelectorAll('.parcel-item').forEach(el =>
+            el.addEventListener('click', () => focusParcel(el.dataset.id)));
+    }
+
+    function popupHtml(p) {
+        const pct = Math.round(p.ratio * 1000) / 10;
+        const attrRows = Object.entries(p.props).map(([k, v]) => {
+            const val = v == null || String(v).trim() === '' ? '—' : String(v).trim();
+            return [FIELD_LABELS[k] || k, val];
+        });
+        const rows = [
+            ['Diện tích thửa', fmtArea(p.area)],
+            ['DT thuộc QH (thu hồi)', fmtArea(p.affected) + (p.affected ? ` (${pct}%)` : '')],
+            ['DT còn lại', fmtArea(p.remain)]
+        ].filter(r => r[1] !== '' && r[1] != null);
+        return `
+            <div class="popup">
+                <h3>THỬA ĐẤT · TỜ ${escapeHtml(p.soTo)} / THỬA ${escapeHtml(p.soThua)}</h3>
+                <span class="tag" style="background:${COLORS[p.status]}">${STATUS_LABEL[p.status]}</span>
+                ${p.affected ? `<div class="bar"><span style="width:${Math.min(pct, 100)}%"></span></div>` : ''}
+                <div class="popup-sub">Ảnh hưởng mở rộng</div>
+                <table>${rows.map(r => `<tr><td>${r[0]}</td><td>${escapeHtml(r[1])}</td></tr>`).join('')}</table>
+                ${p.qhPieces && p.qhPieces.length ? `
+                <div class="popup-sub">Phần thuộc quy hoạch QL62 (${p.qhPieces.length} mảnh)</div>
+                ${p.qhPieces.map(pc => `<table>${['QH', 'DTThuocQH', 'Shape_Length', 'FID_QL62_Wgs84', 'OBJECTID']
+                    .filter(k => k in pc.properties)
+                    .map(k => `<tr><td>${escapeHtml(FIELD_LABELS[k] || k)}</td><td>${escapeHtml(fmtVal(pc.properties[k]))}</td></tr>`).join('')}</table>`).join('<hr style="border:none;border-top:1px dashed var(--line);margin:4px 0">')}` : ''}
+                <div class="popup-sub">Thông tin thửa trong file</div>
+                <table>${attrRows.map(r => `<tr><td>${escapeHtml(r[0])}</td><td>${escapeHtml(r[1])}</td></tr>`).join('')}</table>
+                <div class="btn-row" style="margin-top:10px">
+                    <button class="btn ghost" style="min-width:0;padding:6px" onclick="copyLink('${escapeHtml(p.id)}')">Sao chép link</button>
+                </div>
+            </div>`;
+    }
+
+    // ================== THAO TÁC ==================
+    function focusParcel(id) {
+        const p = parcels.find(x => x.id === id);
+        if (!p || !p.layer) return;
+        map.fitBounds(p.layer.getBounds(), { padding: [60, 60], maxZoom: 19 });
+        setTimeout(() => p.layer.openPopup(), 250);
+        if (window.innerWidth <= 768) closeSidebar();
+    }
+
+    function zoomToData() {
+        const group = L.featureGroup(['hanhlang', 'thuadat', 'timduong'].map(k => layers[k]).filter(Boolean));
+        const b = group.getBounds();
+        if (b.isValid()) map.fitBounds(b, { padding: [40, 40] });
+        else map.setView(MAP_CENTER, MAP_ZOOM);
+    }
+
+    function setLayerVisible(key, on) {
+        if (!layers[key]) return;
+        on ? layers[key].addTo(map) : map.removeLayer(layers[key]);
+        if (on && key === 'thuadat') {
+            ['thuhoi', 'hanhlang', 'timduong'].forEach(k => {
+                if (layers[k] && map.hasLayer(layers[k])) layers[k].bringToFront?.();
+            });
+        }
+    }
+
+    function exportCsv() {
+        const header = ['So to', 'So thua', 'Chu su dung', 'Loai dat', 'Dia chi', 'Dien tich thua (m2)', 'DT thuoc quy hoach (m2)', 'DT con lai (m2)', 'Ty le (%)', 'Muc anh huong'];
+        const rows = parcels.filter(p => p.status !== 'none').sort((a, b) => String(a.soTo).localeCompare(String(b.soTo), 'vi', { numeric: true }) || String(a.soThua).localeCompare(String(b.soThua), 'vi', { numeric: true }))
+            .map(p => [p.soTo, p.soThua, p.chu, p.loaiDat, p.diaChi, p.area.toFixed(1), p.affected.toFixed(1), p.remain.toFixed(1), (p.ratio * 100).toFixed(1), STATUS_LABEL[p.status]]);
+        const csv = '﻿' + [header, ...rows].map(r => r.map(v => `"${String(v ?? '').replace(/"/g, '""')}"`).join(',')).join('\r\n');
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+        a.download = 'QL62_ThanhHoa_thua_anh_huong.csv';
+        a.click();
+        URL.revokeObjectURL(a.href);
+    }
+
+    function copyLink(id) {
+        const url = `${location.origin}${location.pathname}?thua=${encodeURIComponent(id)}`;
+        (navigator.clipboard?.writeText(url) ?? Promise.reject())
+            .then(() => alert('Đã sao chép link thửa đất.'))
+            .catch(() => prompt('Sao chép link:', url));
+    }
+
+    function toggleSidebar() { document.getElementById('sidebar').classList.toggle('open'); }
+    function closeSidebar() { document.getElementById('sidebar').classList.remove('open'); }
+
+    // ================== TIỆN ÍCH ==================
+    function pick(props, keys) {
+        for (const k of keys) {
+            const v = props[k];
+            if (v !== undefined && v !== null && String(v).trim() !== '') return typeof v === 'string' ? v.trim() : v;
+        }
+        return null;
+    }
+
+    function toNum(v) {
+        if (v == null) return null;
+        const n = typeof v === 'number' ? v : parseFloat(String(v).replace(',', '.'));
+        return isFinite(n) ? n : null;
+    }
+
+    function safeArea(f) { try { return turf.area(f); } catch { return 0; } }
+
+    function dissolve(fc) {
+        const polys = fc.features.filter(f => f.geometry && /Polygon/.test(f.geometry.type));
+        if (!polys.length) return null;
+        try { return polys.reduce((acc, f) => acc ? turf.union(acc, f) : f, null); }
+        catch { return polys[0]; }
+    }
+
+    function safeIntersect(a, b) {
+        try { return turf.intersect(a, b); }
+        catch {
+            try { return turf.intersect(turf.buffer(a, 0), turf.buffer(b, 0)); } catch { return null; }
+        }
+    }
+
+    function checkCoordinates() {
+        for (const fc of Object.values(raw)) {
+            const f = fc?.features?.find(x => x.geometry);
+            if (!f) continue;
+            const [x, y] = turf.coordAll(f)[0] || [];
+            if (Math.abs(x) > 180 || Math.abs(y) > 90) {
+                showNotice('Tọa độ trong file đang ở hệ phẳng (VN-2000?). Hãy xuất lại GeoJSON theo hệ <b>WGS84 (EPSG:4326)</b>.', true);
+                return;
+            }
+        }
+    }
+
+    function fmtArea(m2) {
+        if (m2 == null || !isFinite(m2)) return '—';
+        return (m2 >= 10000 ? (m2 / 10000).toLocaleString('vi-VN', { maximumFractionDigits: 2 }) + ' ha'
+                            : m2.toLocaleString('vi-VN', { maximumFractionDigits: 1 }) + ' m²');
+    }
+
+    function fmtVal(v) {
+        if (v == null || String(v).trim() === '') return '—';
+        if (typeof v === 'number' && !Number.isInteger(v)) return v.toLocaleString('vi-VN', { maximumFractionDigits: 2 });
+        return String(v).trim();
+    }
+
+    function setText(id, v) { document.getElementById(id).textContent = v; }
+    function showNotice(html, isError) {
+        const n = document.getElementById('dataNotice');
+        n.innerHTML = html;
+        n.classList.toggle('error', !!isError);
+        n.classList.remove('hidden');
+    }
+    function hideNotice() { document.getElementById('dataNotice').classList.add('hidden'); }
+    function escapeHtml(s) {
+        return String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    }
+</script>
+</body>
+</html>
