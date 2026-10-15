@@ -1,5 +1,0 @@
-Dat 3 file GeoJSON (WGS84) vao day:
-- QL62_timduong.geojson
-- QL62_phamvi_morong.geojson
-- Thuadat.geojson
-Xem README.md o thu muc goc.
